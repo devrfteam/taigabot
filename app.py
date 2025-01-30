@@ -15,14 +15,12 @@ taiga_users = {
     5: {'username': 'admin', 'full_name': 'Admin', 'telegram_id': 123456789},
 }
 
-# Словарь для перевода статусов с английского на русский
 STATUS_TRANSLATIONS = {
     'New': 'Новая',
     'Ready': 'Готово',
     'In progress': 'В процессе',
     'Ready for test': 'Можно проверять',
     'Closed': 'Завершена',
-    # Добавьте другие статусы, если необходимо
 }
 
 def get_entity_forms(entity_type):
