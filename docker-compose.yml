@@ -1,0 +1,6 @@
+# docker-compose.yml
+services:
+  web:
+    build: .
+    ports:
+      - "8080:8080"
