@@ -4,6 +4,7 @@ import html
 from aiohttp import web
 from telegram import Bot
 from telegram.constants import ParseMode
+import yaml
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -11,9 +12,10 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = ''
 bot = Bot(token=TELEGRAM_TOKEN)
 
-taiga_users = {
-    5: {'username': 'admin', 'full_name': 'Admin', 'telegram_id': 123456789},
-}
+with open('users.yaml', 'r') as f:
+    raw_users_data = yaml.safe_load(f)['users']
+    taiga_users = {str(k): v for k, v in raw_users_data.items()}
+logger.info('Loaded users from YAML: %s', taiga_users)
 
 STATUS_TRANSLATIONS = {
     'New': 'Новая',
@@ -27,7 +29,7 @@ def get_entity_forms(entity_type):
     if entity_type == 'task':
         return {
             'noun': 'задача',
-            'adjective': 'новая',  # для согласования с "задача"
+            'adjective': 'новая',
             'dative': 'задаче',
             'genitive': 'задачи',
             'prepositional': 'задаче'
@@ -35,7 +37,7 @@ def get_entity_forms(entity_type):
     elif entity_type == 'userstory':
         return {
             'noun': 'история',
-            'adjective': 'новая',  # для согласования с "история"
+            'adjective': 'новая',
             'dative': 'истории',
             'genitive': 'истории',
             'prepositional': 'истории'
@@ -43,7 +45,7 @@ def get_entity_forms(entity_type):
     elif entity_type == 'epic':
         return {
             'noun': 'эпик',
-            'adjective': 'новый',  # для согласования с "эпик"
+            'adjective': 'новый',
             'dative': 'эпику',
             'genitive': 'эпика',
             'prepositional': 'эпике'
@@ -69,7 +71,16 @@ def truncate_text(text, limit=150):
 def translate_status(status):
     return STATUS_TRANSLATIONS.get(status, status)
 
-async def send_mention_notification(data_info, telegram_id, comment, entity_type):
+async def send_mention_notification(data_info, user_info, comment, entity_type):
+    logger.info(f'Attempting to send mention notification to user {user_info.get("username")} ({user_info.get("telegram_id")})')
+    if not user_info['notifications'].get('mention', True):
+        logger.info('User has disabled mention notifications.')
+        return
+    telegram_id = user_info.get('telegram_id')
+    if not telegram_id or not str(telegram_id).isdigit():
+        logger.warning(f'Invalid Telegram ID for user {user_info.get("username")}')
+        return
+    telegram_id = int(telegram_id)
     project_name = data_info.get('project', {}).get('name', 'Неизвестный проект')
     subject = data_info.get('subject', 'Без названия')
     link = data_info.get('permalink', '#')
@@ -93,7 +104,16 @@ async def send_mention_notification(data_info, telegram_id, comment, entity_type
     )
     logger.info(f'Уведомление об упоминании отправлено пользователю {telegram_id}')
 
-async def send_comment_notification(data_info, telegram_id, comment, entity_type):
+async def send_comment_notification(data_info, user_info, comment, entity_type):
+    logger.info(f'Attempting to send comment notification to user {user_info.get("username")} ({user_info.get("telegram_id")})')
+    if not user_info['notifications'].get('comment', True):
+        logger.info('User has disabled comment notifications.')
+        return
+    telegram_id = user_info.get('telegram_id')
+    if not telegram_id or not str(telegram_id).isdigit():
+        logger.warning(f'Invalid Telegram ID for user {user_info.get("username")}')
+        return
+    telegram_id = int(telegram_id)
     project_name = data_info.get('project', {}).get('name', 'Неизвестный проект')
     subject = data_info.get('subject', 'Без названия')
     link = data_info.get('permalink', '#')
@@ -117,7 +137,16 @@ async def send_comment_notification(data_info, telegram_id, comment, entity_type
     )
     logger.info(f'Уведомление о комментарии отправлено пользователю {telegram_id}')
 
-async def send_description_change_notification(data_info, telegram_id, entity_type):
+async def send_description_change_notification(data_info, user_info, entity_type):
+    logger.info(f'Attempting to send description change notification to user {user_info.get("username")} ({user_info.get("telegram_id")})')
+    if not user_info['notifications'].get('description_change', True):
+        logger.info('User has disabled description change notifications.')
+        return
+    telegram_id = user_info.get('telegram_id')
+    if not telegram_id or not str(telegram_id).isdigit():
+        logger.warning(f'Invalid Telegram ID for user {user_info.get("username")}')
+        return
+    telegram_id = int(telegram_id)
     project_name = data_info.get('project', {}).get('name', 'Неизвестный проект')
     subject = data_info.get('subject', 'Без названия')
     link = data_info.get('permalink', '#')
@@ -141,14 +170,22 @@ async def send_description_change_notification(data_info, telegram_id, entity_ty
     )
     logger.info(f'Уведомление об изменении описания отправлено пользователю {telegram_id}')
 
-async def send_status_change_notification(data_info, telegram_id, entity_type, from_status, to_status):
+async def send_status_change_notification(data_info, user_info, entity_type, from_status, to_status):
+    logger.info(f'Attempting to send status change notification to user {user_info.get("username")} ({user_info.get("telegram_id")})')
+    if not user_info['notifications'].get('status_change', True):
+        logger.info('User has disabled status change notifications.')
+        return
+    telegram_id = user_info.get('telegram_id')
+    if not telegram_id or not str(telegram_id).isdigit():
+        logger.warning(f'Invalid Telegram ID for user {user_info.get("username")}')
+        return
+    telegram_id = int(telegram_id)
     project_name = data_info.get('project', {}).get('name', 'Неизвестный проект')
     subject = data_info.get('subject', 'Без названия')
     link = data_info.get('permalink', '#')
     number = get_entity_number(link)
     entity_forms = get_entity_forms(entity_type)
 
-    # Перевод статусов на русский
     from_status_rus = translate_status(from_status)
     to_status_rus = translate_status(to_status)
 
@@ -168,7 +205,16 @@ async def send_status_change_notification(data_info, telegram_id, entity_type, f
     )
     logger.info(f'Уведомление об изменении статуса отправлено пользователю {telegram_id}')
 
-async def send_task_assignment(task_info, telegram_id):
+async def send_task_assignment(task_info, user_info):
+    logger.info(f'Attempting to send task assignment notification to user {user_info.get("username")} ({user_info.get("telegram_id")})')
+    if not user_info['notifications'].get('assignment', True):
+        logger.info('User has disabled assignment notifications.')
+        return
+    telegram_id = user_info.get('telegram_id')
+    if not telegram_id or not str(telegram_id).isdigit():
+        logger.warning(f'Invalid Telegram ID for user {user_info.get("username")}')
+        return
+    telegram_id = int(telegram_id)
     project_name = task_info.get('project', {}).get('name', 'Неизвестный проект')
     task_subject = task_info.get('subject', 'Без названия')
     task_description = task_info.get('description', '')
@@ -197,7 +243,16 @@ async def send_task_assignment(task_info, telegram_id):
     )
     logger.info(f'Уведомление о назначении задачи отправлено пользователю {telegram_id}')
 
-async def send_userstory_assignment(userstory_info, telegram_id):
+async def send_userstory_assignment(userstory_info, user_info):
+    logger.info(f'Attempting to send user story assignment notification to user {user_info.get("username")} ({user_info.get("telegram_id")})')
+    if not user_info['notifications'].get('assignment', True):
+        logger.info('User has disabled assignment notifications.')
+        return
+    telegram_id = user_info.get('telegram_id')
+    if not telegram_id or not str(telegram_id).isdigit():
+        logger.warning(f'Invalid Telegram ID for user {user_info.get("username")}')
+        return
+    telegram_id = int(telegram_id)
     project_name = userstory_info.get('project', {}).get('name', 'Неизвестный проект')
     subject = userstory_info.get('subject', 'Без названия')
     description = userstory_info.get('description', '')
@@ -221,7 +276,16 @@ async def send_userstory_assignment(userstory_info, telegram_id):
     )
     logger.info(f'Уведомление о назначении истории отправлено пользователю {telegram_id}')
 
-async def send_epic_assignment(epic_info, telegram_id):
+async def send_epic_assignment(epic_info, user_info):
+    logger.info(f'Attempting to send epic assignment notification to user {user_info.get("username")} ({user_info.get("telegram_id")})')
+    if not user_info['notifications'].get('assignment', True):
+        logger.info('User has disabled assignment notifications.')
+        return
+    telegram_id = user_info.get('telegram_id')
+    if not telegram_id or not str(telegram_id).isdigit():
+        logger.warning(f'Invalid Telegram ID for user {user_info.get("username")}')
+        return
+    telegram_id = int(telegram_id)
     project_name = epic_info.get('project', {}).get('name', 'Неизвестный проект')
     subject = epic_info.get('subject', 'Без названия')
     description = epic_info.get('description', '')
@@ -245,14 +309,6 @@ async def send_epic_assignment(epic_info, telegram_id):
     )
     logger.info(f'Уведомление о назначении эпика отправлено пользователю {telegram_id}')
 
-def get_user_ids_from_names(names_list):
-    user_ids_set = set()
-    for name in names_list:
-        for user_id, user_info in taiga_users.items():
-            if user_info.get('username') == name or user_info.get('full_name') == name:
-                user_ids_set.add(user_id)
-    return user_ids_set
-
 async def webhook_handler(request):
     try:
         data = await request.json()
@@ -263,89 +319,84 @@ async def webhook_handler(request):
         change = data.get('change', {})
         diff = change.get('diff', {})
 
+        logger.info('Action: %s, Entity Type: %s', action, entity_type)
+        logger.info('Data Info: %s', data_info)
+        logger.info('Change: %s', change)
+        logger.info('Diff: %s', diff)
+
         assigned_user_ids = set()
         if entity_type == 'userstory':
             assigned_users = data_info.get('assigned_users', [])
             assigned_user_ids.update(assigned_users)
         elif entity_type in ('task', 'epic'):
-            assigned_to = data_info.get('assigned_to', {})
+            assigned_to = data_info.get('assigned_to')
             if assigned_to and assigned_to.get('id'):
                 assigned_user_ids.add(assigned_to.get('id'))
 
+        logger.info('Assigned user IDs: %s', assigned_user_ids)
+
         comment = change.get('comment', '')
         if comment:
-            mentioned_usernames = re.findall(r'@(\w+)', comment)
+            # Adjusted regex to match usernames with dots and special characters
+            mentioned_usernames = re.findall(r'@([a-zA-Z0-9_.-]+)', comment)
+            logger.info('Mentioned usernames: %s', mentioned_usernames)
             for mentioned_username in mentioned_usernames:
+                logger.info('Processing mentioned username: %s', mentioned_username)
                 for user_id, user_info in taiga_users.items():
                     if user_info.get('username') == mentioned_username:
-                        telegram_id = user_info.get('telegram_id')
-                        if telegram_id:
-                            await send_mention_notification(data_info, telegram_id, comment, entity_type)
+                        logger.info('Found user %s for username %s', user_id, mentioned_username)
+                        await send_mention_notification(data_info, user_info, comment, entity_type)
                         break
 
             for user_id in assigned_user_ids:
-                user_info = taiga_users.get(user_id)
+                user_info = taiga_users.get(str(user_id))
                 if user_info:
-                    telegram_id = user_info.get('telegram_id')
-                    if telegram_id:
-                        await send_comment_notification(data_info, telegram_id, comment, entity_type)
+                    logger.info('Sending comment notification to assigned user %s', user_id)
+                    await send_comment_notification(data_info, user_info, comment, entity_type)
 
         if 'description_diff' in diff:
+            logger.info('Description changed')
             for user_id in assigned_user_ids:
-                user_info = taiga_users.get(user_id)
+                user_info = taiga_users.get(str(user_id))
                 if user_info:
-                    telegram_id = user_info.get('telegram_id')
-                    if telegram_id:
-                        await send_description_change_notification(data_info, telegram_id, entity_type)
+                    logger.info('Sending description change notification to user %s', user_id)
+                    await send_description_change_notification(data_info, user_info, entity_type)
 
         if 'status' in diff:
             from_status = diff['status'].get('from', 'неизвестно')
             to_status = diff['status'].get('to', 'неизвестно')
+            logger.info('Status changed from %s to %s', from_status, to_status)
             for user_id in assigned_user_ids:
-                user_info = taiga_users.get(user_id)
+                user_info = taiga_users.get(str(user_id))
                 if user_info:
-                    telegram_id = user_info.get('telegram_id')
-                    if telegram_id:
-                        await send_status_change_notification(data_info, telegram_id, entity_type, from_status, to_status)
+                    logger.info('Sending status change notification to user %s', user_id)
+                    await send_status_change_notification(data_info, user_info, entity_type, from_status, to_status)
 
         if action in ('create', 'change'):
             if entity_type == 'userstory':
                 if 'assigned_users' in diff:
-                    from_names = diff['assigned_users'].get('from') or ''
-                    to_names = diff['assigned_users'].get('to') or ''
-
-                    from_names_list = [name.strip() for name in from_names.split(',')] if from_names else []
-                    to_names_list = [name.strip() for name in to_names.split(',')] if to_names else []
-
-                    from_ids = get_user_ids_from_names(from_names_list)
-                    to_ids = get_user_ids_from_names(to_names_list)
-
-                    new_user_ids = to_ids - from_ids
-
-                    for user_id in new_user_ids:
-                        user_info = taiga_users.get(user_id)
+                    logger.info('Assigned users changed in user story')
+                    current_assigned_users = data_info.get('assigned_users', [])
+                    logger.info('Current assigned users: %s', current_assigned_users)
+                    for user_id in current_assigned_users:
+                        user_info = taiga_users.get(str(user_id))
                         if user_info:
-                            telegram_id = user_info.get('telegram_id')
-                            if telegram_id:
-                                await send_userstory_assignment(data_info, telegram_id)
+                            logger.info('Sending user story assignment notification to user %s', user_id)
+                            await send_userstory_assignment(data_info, user_info)
 
             elif entity_type in ('task', 'epic'):
                 if 'assigned_to' in diff:
-                    to_name = diff['assigned_to'].get('to')
-                    if to_name:
-                        assigned_to_id = None
-                        for user_id, user_info in taiga_users.items():
-                            if user_info.get('username') == to_name or user_info.get('full_name') == to_name:
-                                assigned_to_id = user_id
-                                break
-                        if assigned_to_id:
-                            user_info = taiga_users.get(assigned_to_id)
-                            telegram_id = user_info.get('telegram_id')
-                            if telegram_id:
-                                if entity_type == 'task':
-                                    await send_task_assignment(data_info, telegram_id)
-                                else:
-                                    await send_epic_assignment(data_info, telegram_id)
+                    logger.info('Assigned to changed in %s', entity_type)
+                    assigned_to = data_info.get('assigned_to')
+                    if assigned_to and assigned_to.get('id'):
+                        to_id = assigned_to.get('id')
+                        user_info = taiga_users.get(str(to_id))
+                        if user_info:
+                            logger.info('Sending %s assignment notification to user %s', entity_type, to_id)
+                            if entity_type == 'task':
+                                await send_task_assignment(data_info, user_info)
+                            else:
+                                await send_epic_assignment(data_info, user_info)
     except Exception as e:
         logger.exception('Error processing webhook')
     return web.Response(text='OK')

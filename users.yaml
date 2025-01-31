@@ -1,0 +1,21 @@
+users:
+  5:
+    username: 'admin'
+    full_name: 'Ami pro'
+    telegram_id: 123456789
+    notifications:
+      mention: True
+      comment: True
+      description_change: True
+      status_change: True
+      assignment: True
+  6:
+    username: 'miya'
+    full_name: 'miya'
+    telegram_id: 123456789
+    notifications:
+      mention: True
+      comment: True
+      description_change: True
+      status_change: True
+      assignment: True
